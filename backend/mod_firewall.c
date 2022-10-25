@@ -172,7 +172,7 @@ static ssize_t write_controlinfo(struct file * fd, const char __user *buf, size_
 	char *pchar;
 	unsigned short dp;
 	unsigned short sp;
-
+	int controlled_type;
 	pchar = controlinfo;
 
 	if (len == 0){
@@ -185,6 +185,24 @@ static ssize_t write_controlinfo(struct file * fd, const char __user *buf, size_
 		printk("Something may be wrong, please check it! \n");
 		return 0;
 	}
+	controlled_type = *((int*) pchar);
+	switch (controlled_type)
+	{
+	case 1:// single ban
+		printk("type:%d\n",1);
+		break;
+	case 2:// interval ban
+		printk("type:%d\n",2);
+		break;
+	case 3:// time interval ban
+		printk("type:%d\n",3);
+		break;
+	
+	default:
+		printk("type:0\n");
+		break;
+	}
+	pchar = pchar + 4;
 	controlled_protocol = *(( int *) pchar);
 	pchar = pchar + 4;
 	controlled_saddr = *(( int *) pchar);
@@ -222,7 +240,7 @@ static int __init initmodule(void)
    	nf_register_net_hook(&init_net,&myhook);
 
    	ret = register_chrdev(124, "/dev/controlinfo", &fops); 	
-   	//ÏòÏµÍ³×¢²áÉè±¸½áµãÎÄ¼þ
+   	//ï¿½ï¿½ÏµÍ³×¢ï¿½ï¿½ï¿½è±¸ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½
    	if (ret != 0) printk("Can't register device file! \n");
 
    	return 0;
@@ -232,7 +250,7 @@ static void __exit cleanupmodule(void)
 {
 	nf_unregister_net_hook(&init_net,&myhook);
 
-	unregister_chrdev(124, "controlinfo");	 // ÏòÏµÍ³×¢ÏúÉè±¸½áµãÎÄ¼þ
+	unregister_chrdev(124, "controlinfo");	 // ï¿½ï¿½ÏµÍ³×¢ï¿½ï¿½ï¿½è±¸ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½
     printk("CleanUp\n");
 }
 

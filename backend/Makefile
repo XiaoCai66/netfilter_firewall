@@ -8,4 +8,4 @@ default:
 	gcc -o configure configure.c
 
 clean:
-	$(RM) -rf .*.cmd *.mod.c *.o *.ko .tmp*
+	$(RM) -rf .*.cmd *.mod.c *.o *.ko .tmp* configure *.symvers *.mod *.order

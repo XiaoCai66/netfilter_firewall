@@ -11,6 +11,7 @@ unsigned short controlled_srcport = 0;
 unsigned short controlled_dstport = 0;
 unsigned int controlled_saddr = 0;
 unsigned int controlled_daddr = 0; 
+unsigned int controlled_type = 0;
 
 void display_usage(char *commandname)
 {
@@ -20,11 +21,20 @@ void display_usage(char *commandname)
 
 int getpara(int argc, char *argv[]){
 	int optret;
+	int type;
 	unsigned short tmpport;
-	optret = getopt(argc,argv,"pxymnh");
+	optret = getopt(argc,argv,"pxymnht");
 	while( optret != -1 ) {
 //			printf(" first in getpara: %s\n",argv[optind]);
         switch( optret ) {
+			case 't':
+				type = atoi(argv[optind]);
+				if (type == 0){
+					printf("Invalid source port! please check and try again! \n ");
+					exit(1);
+				}
+				controlled_type = type;
+				break;
         	case 'p':
         		if (strncmp(argv[optind], "ping",4) == 0 )
 					controlled_protocol = 1;
@@ -74,7 +84,7 @@ int getpara(int argc, char *argv[]){
          		display_usage(argv[0]);
          		exit(1);;
         }
-		optret = getopt(argc,argv,"pxymnh");
+		optret = getopt(argc,argv,"pxymnht");
 	}
 }
 
@@ -88,12 +98,13 @@ int main(int argc, char *argv[]){
 		controlinfo_len = 0; //cancel the filter
 	else if (argc > 1){
 		getpara(argc, argv);
-		*(int *)controlinfo = controlled_protocol;
-		*(int *)(controlinfo + 4) = controlled_saddr;
-		*(int *)(controlinfo + 8) = controlled_daddr;
-		*(int *)(controlinfo + 12) = controlled_srcport;
-		*(int *)(controlinfo + 16) = controlled_dstport;
-		controlinfo_len = 20;
+		*(int *)controlinfo = controlled_type;
+		*(int *)(controlinfo + 4) = controlled_protocol;
+		*(int *)(controlinfo + 8) = controlled_saddr;
+		*(int *)(controlinfo + 12) = controlled_daddr;
+		*(int *)(controlinfo + 16) = controlled_srcport;
+		*(int *)(controlinfo + 20) = controlled_dstport;
+		controlinfo_len = 24;
 	}
 	
 //	printf("input info: p = %d, x = %d y = %d m = %d n = %d \n", controlled_protocol,controlled_saddr,controlled_daddr,controlled_srcport,controlled_dstport);
