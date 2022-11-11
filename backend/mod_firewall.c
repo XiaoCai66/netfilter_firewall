@@ -2,6 +2,9 @@
 #define __KERNEL__
 #define MODULE
 
+#define MATCH	1
+#define NMATCH	0
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/types.h>
@@ -12,9 +15,26 @@
 #include <linux/ip.h>
 #include <linux/icmp.h>
 #include <linux/udp.h>
+#include <linux/list.h>
 
-#define MATCH		1
-#define NMATCH	0
+typedef struct rule
+{
+	short id;
+    unsigned int saddr1;
+    unsigned int saddr2;
+	unsigned int daddr1;
+    unsigned int daddr2;
+    unsigned short sport1;
+    unsigned short sport2;
+	unsigned short dport1;
+    unsigned short dport2;
+	struct list_head rule_list;
+}rule;
+
+
+struct list_head rules_head;
+int rule_len = 0;
+short rule_id = 0;
 
 int enable_flag = 0;
 
@@ -28,6 +48,63 @@ unsigned int controlled_daddr = 0;
 
 struct sk_buff *tmpskb;
 struct iphdr *piphdr;
+
+static int rules_init(void){
+	if(rule_len == 0)
+		INIT_LIST_HEAD(&rules_head);
+	return 0;
+}
+
+static int rules_add(short id, unsigned int saddr1, unsigned int saddr2, unsigned int daddr1, unsigned int daddr2, unsigned short sport1, unsigned short sport2, unsigned short dport1, unsigned short dport2){
+	struct rule *new_rule;
+	new_rule = kmalloc(sizeof(struct rule), GFP_KERNEL);
+	if(!new_rule) printk("Malloc failed\n");
+
+	rule_len ++;
+
+	new_rule->id = id;
+	new_rule->saddr1 = saddr1;
+	new_rule->saddr2 = saddr2;
+	new_rule->daddr1 = daddr1;
+	new_rule->daddr2 = daddr2;
+	new_rule->sport1 = sport1;
+	new_rule->sport2 = sport2;
+	new_rule->dport1 = dport1;
+	new_rule->dport2 = dport2;
+	INIT_LIST_HEAD(&new_rule->rule_list);
+
+	list_add_tail(&new_rule->rule_list, &rules_head);
+	printk("new rule:%d added\n", id);
+	return 0;
+}
+
+static int rule_delete(short id){
+	struct rule *del;
+	struct rule *r;
+	list_for_each_entry(r, &rules_head, rule_list){
+		if(r->id == id){
+			del = r;
+			break;
+		}
+	}
+	list_del(&del->rule_list);
+	kfree(del);
+	rule_len --;
+	return 0;
+}
+
+static int rules_traverse(void){
+	struct rule *r;
+	list_for_each_entry(r, &rules_head, rule_list){
+		printk("rule:%d\n", r->id);
+	}
+	return 0;
+}
+
+/* TODO */
+int rule_check(struct rule *r){
+	return MATCH;
+}
 
 /* this function checks whether the port matches */
 int port_check(unsigned short srcport, unsigned short dstport){
@@ -186,6 +263,17 @@ static ssize_t write_controlinfo(struct file * fd, const char __user *buf, size_
 		return 0;
 	}
 	controlled_type = *((int*) pchar);
+	pchar = pchar + 4;
+	controlled_protocol = *(( int *) pchar);
+	pchar = pchar + 4;
+	controlled_saddr = *(( int *) pchar);
+	pchar = pchar + 4;
+	controlled_daddr = *(( int *) pchar);
+	pchar = pchar + 4;
+	controlled_srcport = *(( int *) pchar);
+	pchar = pchar + 4;
+	controlled_dstport = *(( int *) pchar);
+
 	switch (controlled_type)
 	{
 	case 1:// single ban
@@ -202,16 +290,11 @@ static ssize_t write_controlinfo(struct file * fd, const char __user *buf, size_
 		printk("type:0\n");
 		break;
 	}
-	pchar = pchar + 4;
-	controlled_protocol = *(( int *) pchar);
-	pchar = pchar + 4;
-	controlled_saddr = *(( int *) pchar);
-	pchar = pchar + 4;
-	controlled_daddr = *(( int *) pchar);
-	pchar = pchar + 4;
-	controlled_srcport = *(( int *) pchar);
-	pchar = pchar + 4;
-	controlled_dstport = *(( int *) pchar);
+
+	rules_add(rule_id, controlled_saddr,controlled_saddr,controlled_daddr,controlled_daddr,controlled_srcport,controlled_srcport,controlled_dstport,controlled_dstport);
+	rule_id ++;
+
+	if(rule_len %5 == 0) rules_traverse();
 
 	sp = htons(controlled_srcport);
 	dp = htons(controlled_dstport);
@@ -231,11 +314,14 @@ struct file_operations fops = {
 static int __init initmodule(void)
 {
 	int ret;
+	
    	printk("Init Module\n");
    	myhook.hook=hook_func;
    	myhook.hooknum=NF_INET_POST_ROUTING;
    	myhook.pf=PF_INET;
    	myhook.priority=NF_IP_PRI_FIRST;
+
+	rules_init();
 
    	nf_register_net_hook(&init_net,&myhook);
 
