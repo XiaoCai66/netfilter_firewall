@@ -16,6 +16,8 @@
 #include <linux/icmp.h>
 #include <linux/udp.h>
 #include <linux/list.h>
+#include <linux/time.h>
+#include <linux/rtc.h>
 
 typedef struct rule
 {
@@ -35,6 +37,9 @@ typedef struct rule
 struct list_head rules_head;
 int rule_len = 0;
 short rule_id = 0;
+
+struct timespec64 cur_time;
+struct rtc_time fmt_time;
 
 int enable_flag = 0;
 
@@ -63,10 +68,10 @@ static int rules_add(short id, unsigned int saddr1, unsigned int saddr2, unsigne
 	rule_len ++;
 
 	new_rule->id = id;
-	new_rule->saddr1 = saddr1;
-	new_rule->saddr2 = saddr2;
-	new_rule->daddr1 = daddr1;
-	new_rule->daddr2 = daddr2;
+	new_rule->saddr1 = ntohl(saddr1);
+	new_rule->saddr2 = ntohl(saddr2);
+	new_rule->daddr1 = ntohl(daddr1);
+	new_rule->daddr2 = ntohl(daddr2);
 	new_rule->sport1 = sport1;
 	new_rule->sport2 = sport2;
 	new_rule->dport1 = dport1;
@@ -102,8 +107,28 @@ static int rules_traverse(void){
 }
 
 /* TODO */
-int rule_check(struct rule *r){
-	return MATCH;
+static int rule_check(struct rule *r, unsigned int saddr, unsigned int daddr, unsigned short srcport, unsigned short dstport){
+	int ip_match = MATCH;
+	int port_match = MATCH;
+
+	saddr = ntohl(saddr);
+	daddr = ntohl(daddr);
+
+	if(r->daddr1 != 0){
+		if(r->daddr1 > daddr || daddr > r->daddr2) ip_match = NMATCH;
+	}
+	if(r->saddr1 != 0){
+		if(r->saddr1 > saddr || saddr > r->saddr2) ip_match = NMATCH;
+	}
+	if(r->dport1 != 0){
+		if(r->dport1 > dstport || dstport > r->dport2) port_match = NMATCH;
+	}
+	if(r->sport1 != 0){
+		if(r->sport1 > srcport || srcport > r->sport2) port_match = NMATCH;
+	}
+	if(ip_match == MATCH && port_match == MATCH) 
+		return MATCH;
+	else return NMATCH;
 }
 
 /* this function checks whether the port matches */
@@ -215,6 +240,23 @@ int udp_check(void){
       	return NF_ACCEPT;
 }
 
+int chain_check(void){
+	struct tcphdr *ptcphdr;
+	struct rule *r;
+	int ret = NF_ACCEPT;
+	ptcphdr = (struct tcphdr *)(tmpskb->data +(piphdr->ihl*4));
+
+	list_for_each_entry(r, &rules_head, rule_list){
+		printk("rule id : %d\n", r->id);
+		if(rule_check(r,piphdr->saddr,piphdr->daddr,ptcphdr->source,ptcphdr->dest) == MATCH){
+			printk("dump\n");
+			ret = NF_DROP;
+			break;
+		}
+	}
+	return ret;
+}
+
 /*
 unsigned int hook_func(unsigned int hooknum,struct sk_buff **skb,const struct net_device *in,const struct net_device *out,int (*okfn)(struct sk_buff *))
 */
@@ -232,7 +274,8 @@ unsigned int hook_func(void * priv,struct sk_buff *skb,const struct nf_hook_stat
 		return icmp_check();
 	/* tcp */
 	else if (piphdr->protocol  == 6) 
-		return tcp_check();
+		// return tcp_check();
+		return chain_check();
 	/* udp */
 	else if (piphdr->protocol  == 17) 
 		return udp_check();
@@ -295,6 +338,11 @@ static ssize_t write_controlinfo(struct file * fd, const char __user *buf, size_
 	rule_id ++;
 
 	if(rule_len %5 == 0) rules_traverse();
+
+	// get current Beijing Time
+	ktime_get_real_ts64(&cur_time);
+	rtc_time64_to_tm(cur_time.tv_sec + 8 * 60 * 60, &fmt_time);
+	printk("UTC time :%d-%d-%d %d:%d:%d week %d\n",fmt_time.tm_year+1900,fmt_time.tm_mon+1, fmt_time.tm_mday,fmt_time.tm_hour,fmt_time.tm_min,fmt_time.tm_sec, fmt_time.tm_wday);
 
 	sp = htons(controlled_srcport);
 	dp = htons(controlled_dstport);
