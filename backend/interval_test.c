@@ -20,6 +20,7 @@ int main(int argc, char* argv[]){
     unsigned int sport2;
     unsigned int dport1;
     unsigned int dport2;
+    unsigned int protocol;
 
     inet_aton(argv[1], (struct in_addr* )&saddr1);
     inet_aton(argv[2], (struct in_addr* )&saddr2);
@@ -29,21 +30,21 @@ int main(int argc, char* argv[]){
     sport2 = atoi(argv[6]);
     dport1 = atoi(argv[7]);
     dport2 = atoi(argv[8]);
+    protocol = atoi(argv[9]);
     
 	printf("rule:\nsaddr %d-%d\ndaddr:%d-%d\nsport:%d-%d\ndport:%d-%d\n",saddr1,saddr2,daddr1,daddr2,sport1,sport2,dport1,dport2);
 
-    *(int *)controlinfo = 2;// interval ban
-    *(int *)(controlinfo+4) = 1;// protocol type
-    *(int *)(controlinfo+8) = saddr1;
-    *(int *)(controlinfo+12) = saddr2;
-    *(int *)(controlinfo+16) = daddr1;
-    *(int *)(controlinfo+20) = daddr2;
-    *(int *)(controlinfo+24) = sport1;
-    *(int *)(controlinfo+28) = sport2;
-    *(int *)(controlinfo+32) = dport1;
-    *(int *)(controlinfo+36) = dport2;
+    *(int *)(controlinfo) = protocol;// protocol type 1tcp 2udp 3ping
+    *(int *)(controlinfo+4) = saddr1;
+    *(int *)(controlinfo+8) = saddr2;
+    *(int *)(controlinfo+12) = daddr1;
+    *(int *)(controlinfo+16) = daddr2;
+    *(int *)(controlinfo+20) = sport1;
+    *(int *)(controlinfo+24) = sport2;
+    *(int *)(controlinfo+28) = dport1;
+    *(int *)(controlinfo+32) = dport2;
 
-    controlinfo_len = 40;
+    controlinfo_len = 36;
 
 	if (stat("/dev/controlinfo",&buf) != 0){
 		if (system("mknod /dev/controlinfo c 124 0") == -1){

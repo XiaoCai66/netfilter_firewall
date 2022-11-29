@@ -33,8 +33,9 @@ typedef struct rule
 	struct list_head rule_list;
 }rule;
 
-
-struct list_head rules_head;
+struct list_head icmp_rules_head;
+struct list_head tcp_rules_head;
+struct list_head udp_rules_head;
 int rule_len = 0;
 short rule_id = 0;
 
@@ -45,22 +46,26 @@ int enable_flag = 0;
 
 struct nf_hook_ops myhook;
 
-unsigned int controlled_protocol = 0;
-unsigned short controlled_srcport = 0;
-unsigned short controlled_dstport = 0;
-unsigned int controlled_saddr = 0;
-unsigned int controlled_daddr = 0;
+unsigned int c_saddr1;
+unsigned int c_saddr2;
+unsigned int c_daddr1;
+unsigned int c_daddr2;
+unsigned short c_sport1;
+unsigned short c_sport2;
+unsigned short c_dport1;
+unsigned short c_dport2;
 
 struct sk_buff *tmpskb;
 struct iphdr *piphdr;
 
 static int rules_init(void){
-	if(rule_len == 0)
-		INIT_LIST_HEAD(&rules_head);
+	INIT_LIST_HEAD(&tcp_rules_head);
+	INIT_LIST_HEAD(&udp_rules_head);
+	INIT_LIST_HEAD(&icmp_rules_head);
 	return 0;
 }
 
-static int rules_add(short id, unsigned int saddr1, unsigned int saddr2, unsigned int daddr1, unsigned int daddr2, unsigned short sport1, unsigned short sport2, unsigned short dport1, unsigned short dport2){
+static int rules_add(struct list_head* rules, short id, unsigned int saddr1, unsigned int saddr2, unsigned int daddr1, unsigned int daddr2, unsigned short sport1, unsigned short sport2, unsigned short dport1, unsigned short dport2){
 	struct rule *new_rule;
 	new_rule = kmalloc(sizeof(struct rule), GFP_KERNEL);
 	if(!new_rule) printk("Malloc failed\n");
@@ -78,15 +83,15 @@ static int rules_add(short id, unsigned int saddr1, unsigned int saddr2, unsigne
 	new_rule->dport2 = dport2;
 	INIT_LIST_HEAD(&new_rule->rule_list);
 
-	list_add_tail(&new_rule->rule_list, &rules_head);
+	list_add_tail(&new_rule->rule_list, rules);
 	printk("new rule:%d added\n", id);
 	return 0;
 }
 
-static int rule_delete(short id){
+static int rule_delete(struct list_head* rules, short id){
 	struct rule *del;
 	struct rule *r;
-	list_for_each_entry(r, &rules_head, rule_list){
+	list_for_each_entry(r, rules, rule_list){
 		if(r->id == id){
 			del = r;
 			break;
@@ -98,9 +103,9 @@ static int rule_delete(short id){
 	return 0;
 }
 
-static int rules_traverse(void){
+static int rules_traverse(struct list_head* rules){
 	struct rule *r;
-	list_for_each_entry(r, &rules_head, rule_list){
+	list_for_each_entry(r, rules, rule_list){
 		printk("rule:%d\n", r->id);
 	}
 	return 0;
@@ -131,129 +136,113 @@ static int rule_check(struct rule *r, unsigned int saddr, unsigned int daddr, un
 	else return NMATCH;
 }
 
-/* this function checks whether the port matches */
-int port_check(unsigned short srcport, unsigned short dstport){
-	/* if neither port is set */ 
-	if ((controlled_srcport == 0 ) && ( controlled_dstport == 0 ))
-		return MATCH;
-	
-	/* if source is set */
-	if ((controlled_srcport != 0 ) && ( controlled_dstport == 0 ))
-	{
-		if (controlled_srcport == srcport)
-			return MATCH;
-		else
-			return NMATCH;
-	}
+// int icmp_check(void){
+// 	struct icmphdr *picmphdr;
+// 	/* printk("<0>This is an ICMP packet.\n"); */
+//    	picmphdr = (struct icmphdr *)(tmpskb->data +(piphdr->ihl*4));
 
-	/* if destination is set */
-	if ((controlled_srcport == 0 ) && ( controlled_dstport != 0 ))
-	{
-		if (controlled_dstport == dstport)
-			return MATCH;
-		else
-			return NMATCH;
-	}
+// 	if (picmphdr->type == 0){ // ping reply
+// 			if (ipaddr_check(piphdr->daddr,piphdr->saddr) == MATCH){
+// 			 	printk("An ICMP packet is denied! \n");
+// 				return NF_DROP;
+// 			}
+// 	}
+// 	if (picmphdr->type == 8){ // ping request
+// 			if (ipaddr_check(piphdr->saddr,piphdr->daddr) == MATCH){
+// 			 	printk("An ICMP packet is denied! \n");
+// 				return NF_DROP;
+// 			}
+// 	}
+//     return NF_ACCEPT;
+// }
 
-	/* if both are set */
-	if ((controlled_srcport != 0 ) && ( controlled_dstport != 0 ))
-	{
-		if ((controlled_srcport == srcport) && (controlled_dstport == dstport))
-			return MATCH;
-		else
-			return NMATCH;
-	}
+// int tcp_check(void){
+// 	struct tcphdr *ptcphdr;
+// 	/* printk("<0>This is an tcp packet.\n"); */
+//     ptcphdr = (struct tcphdr *)(tmpskb->data +(piphdr->ihl*4));
 
-	return NMATCH;
-}
+//     /* reject all */
+// 	if ((ipaddr_check(piphdr->saddr,piphdr->daddr) == MATCH) && (port_check(ptcphdr->source,ptcphdr->dest) == MATCH)){
+// 	 	printk("A TCP packet is denied! \n");
+// 		return NF_DROP;
+// 	}
+// 	else
+//       	return NF_ACCEPT;
+// }
 
-int ipaddr_check(unsigned int saddr, unsigned int daddr){
-	if ((controlled_saddr == 0 ) && ( controlled_daddr == 0 ))
-		return MATCH;
-	if ((controlled_saddr != 0 ) && ( controlled_daddr == 0 ))
-	{
-		if (controlled_saddr == saddr)
-			return MATCH;
-		else
-			return NMATCH;
-	}
-	if ((controlled_saddr == 0 ) && ( controlled_daddr != 0 ))
-	{
-		if (controlled_daddr == daddr)
-			return MATCH;
-		else
-			return NMATCH;
-	}
-	if ((controlled_saddr != 0 ) && ( controlled_daddr != 0 ))
-	{
-		if ((controlled_saddr == saddr) && (controlled_daddr == daddr))
-			return MATCH;
-		else
-			return NMATCH;
-	}
-	return NMATCH;
-}
+// int udp_check(void){
+// 	struct udphdr *pudphdr;
+// 	/* printk("<0>This is an udp packet.\n"); */
+//     pudphdr = (struct udphdr *)(tmpskb->data +(piphdr->ihl*4));
+// 	if ((ipaddr_check(piphdr->saddr,piphdr->daddr) == MATCH) && (port_check(pudphdr->source,pudphdr->dest) == MATCH)){
+// 	 	printk("A UDP packet is denied! \n");
+// 		return NF_DROP;
+// 	}
+// 	else
+//       	return NF_ACCEPT;
+// }
 
-int icmp_check(void){
-	struct icmphdr *picmphdr;
-	/* printk("<0>This is an ICMP packet.\n"); */
-   	picmphdr = (struct icmphdr *)(tmpskb->data +(piphdr->ihl*4));
-
-	if (picmphdr->type == 0){
-			if (ipaddr_check(piphdr->daddr,piphdr->saddr) == MATCH){
-			 	printk("An ICMP packet is denied! \n");
-				return NF_DROP;
-			}
-	}
-	if (picmphdr->type == 8){
-			if (ipaddr_check(piphdr->saddr,piphdr->daddr) == MATCH){
-			 	printk("An ICMP packet is denied! \n");
-				return NF_DROP;
-			}
-	}
-    return NF_ACCEPT;
-}
-
-int tcp_check(void){
-	struct tcphdr *ptcphdr;
-	/* printk("<0>This is an tcp packet.\n"); */
-    ptcphdr = (struct tcphdr *)(tmpskb->data +(piphdr->ihl*4));
-
-    /* reject all */
-	if ((ipaddr_check(piphdr->saddr,piphdr->daddr) == MATCH) && (port_check(ptcphdr->source,ptcphdr->dest) == MATCH)){
-	 	printk("A TCP packet is denied! \n");
-		return NF_DROP;
-	}
-	else
-      	return NF_ACCEPT;
-}
-
-int udp_check(void){
-	struct udphdr *pudphdr;
-	/* printk("<0>This is an udp packet.\n"); */
-    pudphdr = (struct udphdr *)(tmpskb->data +(piphdr->ihl*4));
-	if ((ipaddr_check(piphdr->saddr,piphdr->daddr) == MATCH) && (port_check(pudphdr->source,pudphdr->dest) == MATCH)){
-	 	printk("A UDP packet is denied! \n");
-		return NF_DROP;
-	}
-	else
-      	return NF_ACCEPT;
-}
-
-int chain_check(void){
+int tcp_chain_check(void){
 	struct tcphdr *ptcphdr;
 	struct rule *r;
 	int ret = NF_ACCEPT;
 	ptcphdr = (struct tcphdr *)(tmpskb->data +(piphdr->ihl*4));
 
-	list_for_each_entry(r, &rules_head, rule_list){
-		printk("rule id : %d\n", r->id);
+	list_for_each_entry(r, &tcp_rules_head, rule_list){
+		printk("tcp rule id : %d\n", r->id);
 		if(rule_check(r,piphdr->saddr,piphdr->daddr,ptcphdr->source,ptcphdr->dest) == MATCH){
 			printk("dump\n");
 			ret = NF_DROP;
 			break;
 		}
 	}
+	return ret;
+}
+
+int udp_chain_check(void){
+	struct udphdr *pudphdr;
+	struct rule *r;
+	int ret = NF_ACCEPT;
+    pudphdr = (struct udphdr *)(tmpskb->data +(piphdr->ihl*4));
+
+	list_for_each_entry(r, &udp_rules_head, rule_list){
+		printk("udp rule id : %d\n", r->id);
+		if(rule_check(r,piphdr->saddr,piphdr->daddr,pudphdr->source,pudphdr->dest) == MATCH){
+			printk("dump\n");
+			ret = NF_DROP;
+			break;
+		}
+	}
+	return ret;
+}
+
+int icmp_chain_check(void){
+	struct icmphdr *picmphdr;
+	struct rule *r;
+	int ret = NF_ACCEPT;
+   	picmphdr = (struct icmphdr *)(tmpskb->data +(piphdr->ihl*4));
+
+	if (picmphdr->type == 0){ // ping reply
+		list_for_each_entry(r, &icmp_rules_head, rule_list){
+			printk("rule id : %d\n", r->id);
+			if(rule_check(r,piphdr->daddr,piphdr->saddr,0,0) == MATCH){
+				printk("dump\n");
+				ret = NF_DROP;
+				break;
+			}
+		}
+	} else if (picmphdr->type == 8) // ping request
+	{
+		list_for_each_entry(r, &icmp_rules_head, rule_list){
+			printk("rule id : %d\n", r->id);
+			if(rule_check(r,piphdr->saddr,piphdr->daddr,0,0) == MATCH){
+				printk("dump\n");
+				ret = NF_DROP;
+				break;
+			}
+		}
+	}
+	
 	return ret;
 }
 
@@ -266,19 +255,15 @@ unsigned int hook_func(void * priv,struct sk_buff *skb,const struct nf_hook_stat
    	tmpskb = skb;
 	piphdr = ip_hdr(tmpskb);
 
-	if(piphdr->protocol != controlled_protocol)
-      	return NF_ACCEPT;
-
 	/* icmp */
 	if (piphdr->protocol  == 1)  
-		return icmp_check();
+		return icmp_chain_check();
 	/* tcp */
 	else if (piphdr->protocol  == 6) 
-		// return tcp_check();
-		return chain_check();
+		return tcp_chain_check();
 	/* udp */
 	else if (piphdr->protocol  == 17) 
-		return udp_check();
+		return udp_chain_check();
 	else
 	{
 		printk("Unkonwn type's packet! \n");
@@ -290,9 +275,8 @@ static ssize_t write_controlinfo(struct file * fd, const char __user *buf, size_
 {
 	char controlinfo[128];
 	char *pchar;
-	unsigned short dp;
-	unsigned short sp;
 	int controlled_type;
+	unsigned int c_protocol;
 	pchar = controlinfo;
 
 	if (len == 0){
@@ -305,50 +289,61 @@ static ssize_t write_controlinfo(struct file * fd, const char __user *buf, size_
 		printk("Something may be wrong, please check it! \n");
 		return 0;
 	}
-	controlled_type = *((int*) pchar);
+	c_protocol = *((int*) pchar);
 	pchar = pchar + 4;
-	controlled_protocol = *(( int *) pchar);
+	c_saddr1 = *((int*) pchar);
 	pchar = pchar + 4;
-	controlled_saddr = *(( int *) pchar);
+	c_saddr2 = *((int*) pchar);
 	pchar = pchar + 4;
-	controlled_daddr = *(( int *) pchar);
+	c_daddr1 = *((int*) pchar);
 	pchar = pchar + 4;
-	controlled_srcport = *(( int *) pchar);
+	c_daddr2 = *((int*) pchar);
 	pchar = pchar + 4;
-	controlled_dstport = *(( int *) pchar);
+	c_sport1 = *((int*) pchar);
+	pchar = pchar + 4;
+	c_sport2 = *((int*) pchar);
+	pchar = pchar + 4;
+	c_dport1 = *((int*) pchar);
+	pchar = pchar + 4;
+	c_dport2 = *((int*) pchar);
+	pchar = pchar + 4;
 
-	switch (controlled_type)
+	switch (c_protocol)
 	{
 	case 1:// single ban
-		printk("type:%d\n",1);
+		printk("new tcp rule\n");
+		rules_add(&tcp_rules_head, rule_id, c_saddr1, c_saddr2, c_daddr1, c_daddr2, c_sport1, c_sport2, c_dport1, c_dport2);
 		break;
 	case 2:// interval ban
-		printk("type:%d\n",2);
+		printk("new udp rule\n");
+		rules_add(&udp_rules_head, rule_id, c_saddr1, c_saddr2, c_daddr1, c_daddr2, c_sport1, c_sport2, c_dport1, c_dport2);
 		break;
 	case 3:// time interval ban
-		printk("type:%d\n",3);
+		printk("new icmp rule\n");
+		rules_add(&icmp_rules_head, rule_id, c_saddr1, c_saddr2, c_daddr1, c_daddr2, c_sport1, c_sport2, c_dport1, c_dport2);
 		break;
 	
 	default:
-		printk("type:0\n");
+		printk("wrong protocol\n");
 		break;
 	}
+	
+	rule_id++;
 
-	rules_add(rule_id, controlled_saddr,controlled_saddr,controlled_daddr,controlled_daddr,controlled_srcport,controlled_srcport,controlled_dstport,controlled_dstport);
-	rule_id ++;
-
-	if(rule_len %5 == 0) rules_traverse();
+	printk("tcp:\n");
+	rules_traverse(&tcp_rules_head);
+	printk("udp:\n");
+	rules_traverse(&udp_rules_head);
+	printk("icmp:\n");
+	rules_traverse(&icmp_rules_head);
 
 	// get current Beijing Time
 	ktime_get_real_ts64(&cur_time);
 	rtc_time64_to_tm(cur_time.tv_sec + 8 * 60 * 60, &fmt_time);
 	printk("UTC time :%d-%d-%d %d:%d:%d week %d\n",fmt_time.tm_year+1900,fmt_time.tm_mon+1, fmt_time.tm_mday,fmt_time.tm_hour,fmt_time.tm_min,fmt_time.tm_sec, fmt_time.tm_wday);
 
-	sp = htons(controlled_srcport);
-	dp = htons(controlled_dstport);
-
 	enable_flag = 1;
-	printk("input info: p = %d, x = %d y = %d m = %d n = %d \n", controlled_protocol,controlled_saddr,controlled_daddr,sp,dp);
+	printk("rule: sip:%u-%u dip:%u-%u sport:%u-%u dport:%u-%u protocol:%u\n", c_saddr1, c_saddr2, c_daddr1, c_daddr2, c_sport1, c_sport2, c_dport1, c_dport2, c_protocol);
 	return len;
 }
 
