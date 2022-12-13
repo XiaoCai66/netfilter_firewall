@@ -1,5 +1,6 @@
 QT       += core gui
-
+QT+=sql
+QT += core
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++11
@@ -16,14 +17,29 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    addrule.cpp \
+    alterrule.cpp \
+    login.cpp \
     main.cpp \
-    mainwindow.cpp
+    mainwindow.cpp \
+    screen.cpp
 
 HEADERS += \
-    mainwindow.h
+    addrule.h \
+    alterrule.h \
+    login.h \
+    mainwindow.h \
+    screen.h
 
 FORMS += \
-    mainwindow.ui
+    addrule.ui \
+    alterrule.ui \
+    login.ui \
+    mainwindow.ui \
+    screen.ui
+
+TRANSLATIONS += \
+    firewall_zh_CN.ts
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

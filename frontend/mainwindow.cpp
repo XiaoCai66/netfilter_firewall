@@ -1,5 +1,10 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "QtDebug"
+#include "QSqlQuery"
+#include "QSqlDatabase"
+#include "QSqlError"
+#include "QDebug"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -13,3 +18,8 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+
+void MainWindow::on_pushButton_3_clicked()
+{
+    acceptDrops();
+}
